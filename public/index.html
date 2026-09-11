@@ -113,6 +113,9 @@
   .status { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12px; color: var(--ink-3); }
   .pair { display: flex; gap: 6px; align-items: center; }
   .pair span { font-size: 12px; color: var(--ink-3); }
+  .pair .btn.sm { padding: 6px 10px; min-width: 0; }
+  #transpose { width: 64px; text-align: center; }
+  .tpNote { font-size: 12px; color: var(--ink-3); min-height: 1.2em; }
   #customBox { display: grid; gap: 6px; flex: 1 1 100%; }
   #customBox textarea { width: 100%; min-height: 54px; font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 13px; }
 
@@ -202,6 +205,16 @@
         <button type="button" id="seg72" data-comb="72" aria-pressed="false">72</button>
         <button type="button" id="segCustom" data-comb="custom" aria-pressed="false">Measured</button>
       </div>
+    </div>
+    <div class="field">
+      <label for="transpose">Transpose (semitones)</label>
+      <div class="pair">
+        <button type="button" class="btn sm" id="tpDown" aria-label="Down one semitone">−</button>
+        <input type="number" id="transpose" min="-24" max="24" step="1" value="0">
+        <button type="button" class="btn sm" id="tpUp" aria-label="Up one semitone">+</button>
+        <button type="button" class="btn sm" id="tpBest" title="Try every shift from an octave down to an octave up and keep the one that puts the most notes on the comb as written">Best fit</button>
+      </div>
+      <div class="tpNote" id="tpNote"></div>
     </div>
     <div class="field">
       <div class="lab">Selection (seconds)</div>
@@ -505,7 +518,26 @@
   }
 
   // ---- state ----
-  let song = example(); let combId = '30'; let cut = null; let mapped = null, mappedAll = null;
+  let raw = example(); let song = { ...raw, notes: raw.notes.slice() }; let combId = '30'; let cut = null; let mapped = null, mappedAll = null;
+  const INTERVALS = ['unison', 'a minor second', 'a major second', 'a minor third', 'a major third', 'a perfect fourth', 'a tritone', 'a perfect fifth', 'a minor sixth', 'a major sixth', 'a minor seventh', 'a major seventh', 'an octave'];
+  function transposeAmount() { return Math.max(-24, Math.min(24, Math.round(parseFloat($('transpose').value) || 0))); }
+  function intervalName(k) { const a = Math.abs(k); if (a === 0) return 'as written'; const oct = Math.floor(a / 12), rem = a % 12; let name = oct >= 1 && rem === 0 ? (oct === 1 ? 'an octave' : oct + ' octaves') : oct >= 1 ? `${oct === 1 ? 'an octave' : oct + ' octaves'} and ${INTERVALS[rem]}` : INTERVALS[rem]; return `${k > 0 ? 'up' : 'down'} ${name}`; }
+  function applyTranspose() {
+    const k = transposeAmount(); $('transpose').value = k;
+    song = { ...raw, notes: raw.notes.map(n => ({ ...n, p: Math.max(0, Math.min(127, n.p + k)) })) };
+    $('tpNote').textContent = k === 0 ? '' : `${k > 0 ? '+' : ''}${k}, ${intervalName(k)}`;
+  }
+  function bestTranspose() {
+    const comb = combFor(combId); const c = cutSong(); let best = null;
+    for (let k = -12; k <= 12; k++) {
+      const notes = raw.notes.filter(n => n.t >= c.start && n.t < c.end).map(n => ({ ...n, p: n.p + k, t: n.t - c.start }));
+      const m = mapSong({ notes, length: c.length, start: c.start, end: c.end }, comb, $('fold').value, $('bass').value);
+      const score = m.stat.played * 3 + m.stat.folded - m.stat.range - m.stat.fast * 0.5 - Math.abs(k) * 0.01;
+      if (!best || score > best.score) best = { k, score, stat: m.stat };
+    }
+    $('transpose').value = best.k; applyTranspose(); refresh();
+    $('tpNote').textContent = `${best.k > 0 ? '+' : ''}${best.k}, ${intervalName(best.k)}: ${best.stat.played} notes land as written, ${best.stat.range + best.stat.fast} dropped`;
+  }
   let playing = false, startAt = 0, cursor = 0, raf = 0, speed = 1;
   const canvas = $('strip'), cx = canvas.getContext('2d');
   const scroller = $('stripScroll'), inner = $('stripInner');
@@ -678,7 +710,7 @@
     const dropped = mapped.notes.filter(n => n.why === 'range' || n.why === 'fast').map(n => [n.t.toFixed(3), nn(n.p), n.why === 'range' ? 'no tooth' : 'tooth still ringing']);
     const over = cut.length > rot;
     const lines = [
-      `# ${song.name}, selection ${cut.start.toFixed(1)} to ${cut.end.toFixed(1)} s, ${comb.label}`,
+      `# ${song.name}, selection ${cut.start.toFixed(1)} to ${cut.end.toFixed(1)} s, ${comb.label}${transposeAmount() ? `, transposed ${transposeAmount() > 0 ? '+' : ''}${transposeAmount()} semitones` : ''}`,
       `# rotation ${rot} s, cylinder dia ${dia} mm, tooth pitch ${pitch} mm, pin dia ${pin} mm, same-tooth spacing floor ${gap} mm (${(gap / mmPerSec).toFixed(2)} s)`,
       `# ${rows.length} pins. ${thinned.length} repeated notes thinned for spacing, ${dropped.length} notes dropped (listed at end).${over ? ' WARNING: selection is longer than one rotation.' : ''}`,
       'pin,time_s,tooth_from_bass,tooth_note,folded_from,angle_deg,axial_mm,arc_from_prev_same_tooth_mm',
@@ -734,18 +766,22 @@
   ['fold', 'bass'].forEach(id => $(id).addEventListener('change', () => { stopPlay(); refresh(); }));
   ['cutStart', 'cutEnd'].forEach(id => $(id).addEventListener('change', () => { stopPlay(); sel.start = parseFloat($('cutStart').value) || 0; sel.end = parseFloat($('cutEnd').value) || 0; if (sel.end <= sel.start) sel.end = sel.start + 0.25; refresh(); revealSelection(); }));
   $('rot').addEventListener('input', () => { light(); buildPinMap(); });
+  $('transpose').addEventListener('change', () => { stopPlay(); applyTranspose(); refresh(); });
+  $('tpDown').addEventListener('click', () => { $('transpose').value = transposeAmount() - 1; stopPlay(); applyTranspose(); refresh(); });
+  $('tpUp').addEventListener('click', () => { $('transpose').value = transposeAmount() + 1; stopPlay(); applyTranspose(); refresh(); });
+  $('tpBest').addEventListener('click', () => { stopPlay(); bestTranspose(); });
   ['dia', 'pitch', 'pin', 'gap'].forEach(id => $(id).addEventListener('input', buildPinMap));
   $('zoom').addEventListener('change', () => { const keep = cut.start; layout(); drawStrip(-1); scroller.scrollLeft = Math.max(0, LEFT + keep * pxs - scroller.clientWidth * 0.25); drawStrip(-1); });
   $('customTeeth').addEventListener('input', () => { if (combId === 'custom') refresh(); });
   document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => { combId = b.dataset.comb; refresh(); if (playing) startPlay(); }));
   $('file').addEventListener('change', async e => {
     const f = e.target.files[0]; if (!f) return;
-    try { const parsed = parseMidi(await f.arrayBuffer()); song = { name: f.name, ...parsed }; $('status').textContent = `${f.name}: ${parsed.notes.length} notes, ${parsed.length.toFixed(1)} s`;
+    try { const parsed = parseMidi(await f.arrayBuffer()); raw = { name: f.name, ...parsed }; applyTranspose(); $('status').textContent = `${f.name}: ${parsed.notes.length} notes, ${parsed.length.toFixed(1)} s`;
       indexSong(); sel.start = 0; sel.end = snapEnd(Math.min(parsed.length, rotTime()), 2); if (parsed.length > 90 && $('zoom').value === '90') $('zoom').value = '30'; layout(); stopPlay(); refresh(); scroller.scrollLeft = 0; drawStrip(-1); }
     catch (err) { $('status').textContent = `Could not read ${f.name}. ${err.message}`; }
   });
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => drawStrip(-1));
-  indexSong(); sel.start = 0; sel.end = song.length; layout(); refresh();
+  applyTranspose(); indexSong(); sel.start = 0; sel.end = song.length; layout(); refresh();
 })();
 </script>
 
