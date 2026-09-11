@@ -174,6 +174,10 @@
   .pins .summary { display: flex; flex-wrap: wrap; gap: 6px 22px; font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
   .pins .summary b { color: var(--ink); font-weight: 600; }
   .pins .summary .warn { color: var(--oxide); }
+  .movements { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: end; padding: 12px 14px; background: var(--sunk); border-radius: 5px; }
+  .movements select { min-width: 200px; }
+  .movements input[type="text"] { width: 200px; }
+  .movements .msg { font-size: 12px; color: var(--ink-3); flex: 1 1 200px; }
   .pins textarea { width: 100%; min-height: 160px; font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12px; line-height: 1.4; white-space: pre; overflow: auto; }
 
   .about { display: grid; gap: 10px; max-width: 72ch; color: var(--ink-2); font-size: 14px; }
@@ -310,6 +314,12 @@
     <div class="strip-head">
       <h2>Pin map for the cylinder</h2>
       <span class="note">One row per pin for the selected comb and selection. Angle runs from the start of the selection over the cylinder rotation time set above; axial position counts from the lowest tooth. Two pins on one tooth closer than the spacing floor keep only the first, the way a real arrangement thins repeated notes.</span>
+    </div>
+    <div class="movements" aria-label="Saved movements">
+      <div class="field"><label for="movSel">Saved movements</label><select id="movSel"><option value="">Choose a movement</option></select></div>
+      <div class="field"><label for="movName">Name</label><input type="text" id="movName" placeholder="Sankyo 30, from the maker" maxlength="60"></div>
+      <div class="field"><div class="lab">&nbsp;</div><div style="display:flex; gap:8px; flex-wrap:wrap"><button type="button" class="btn" id="movSave">Save</button><button type="button" class="btn" id="movDelete">Delete</button><button type="button" class="btn" id="movLink">Copy link</button></div></div>
+      <div class="msg" id="movMsg">A movement is the measured comb plus the cylinder numbers below. Saved in this browser only. Copy link puts it in the address bar so you can open it elsewhere.</div>
     </div>
     <div class="params">
       <div class="field"><label for="dia">Cylinder diameter (mm)</label><input type="number" id="dia" min="1" step="0.1" value="13"></div>
@@ -739,6 +749,60 @@
     setTimeout(() => { $('copy').textContent = 'Copy'; }, 1800);
   });
 
+  // ---- saved movements: localStorage plus a shareable URL hash; no account, nothing leaves the browser ----
+  const LS_MOV = 'combcompare.movements', LS_LAST = 'combcompare.last';
+  const lsGet = (k, fb) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch (e) { return fb; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } };
+  function snapshot() { return { comb: combId, teeth: $('customTeeth').value.trim(), rot: $('rot').value, dia: $('dia').value, pitch: $('pitch').value, pin: $('pin').value, gap: $('gap').value, fold: $('fold').value, bass: $('bass').value, transpose: $('transpose').value }; }
+  function applySnapshot(m) {
+    if (!m) return;
+    if (m.teeth) $('customTeeth').value = m.teeth;
+    for (const k of ['rot', 'dia', 'pitch', 'pin', 'gap']) if (m[k] !== undefined && m[k] !== '') $(k).value = m[k];
+    if (m.fold) $('fold').value = m.fold; if (m.bass) $('bass').value = m.bass; if (m.transpose !== undefined) $('transpose').value = m.transpose;
+    if (m.comb && (m.comb === 'custom' ? !!m.teeth : COMBS[m.comb])) combId = m.comb;
+  }
+  function movements() { const l = lsGet(LS_MOV, []); return Array.isArray(l) ? l : []; }
+  function renderMovements(selectedId) {
+    const sel = $('movSel'); sel.innerHTML = '<option value="">Choose a movement</option>';
+    for (const m of movements()) { const o = document.createElement('option'); o.value = m.id; o.textContent = `${m.name} (${m.teeth ? m.teeth.split(/\s+/).length + ' teeth, ' : ''}${m.rot} s)`; sel.appendChild(o); }
+    sel.value = selectedId || '';
+  }
+  const msg = t => { $('movMsg').textContent = t; };
+  $('movSave').addEventListener('click', () => {
+    const name = $('movName').value.trim() || $('movSel').selectedOptions[0]?.textContent.replace(/ \(.*$/, '') || '';
+    if (!name) { msg('Give the movement a name first.'); $('movName').focus(); return; }
+    const list = movements(); const cur = $('movSel').value; let m = list.find(x => x.id === cur && x.name === name);
+    if (!m) { m = { id: Date.now().toString(36) }; list.push(m); }
+    Object.assign(m, snapshot(), { name, saved: new Date().toISOString() });
+    if (!lsSet(LS_MOV, list)) { msg('This browser is not allowing storage. Use Copy link to keep it instead.'); return; }
+    renderMovements(m.id); $('movName').value = name; msg(`Saved "${name}" in this browser.`);
+  });
+  $('movSel').addEventListener('change', () => {
+    const m = movements().find(x => x.id === $('movSel').value); if (!m) return;
+    stopPlay(); applySnapshot(m); applyTranspose(); refresh(); $('movName').value = m.name; msg(`Loaded "${m.name}".`);
+  });
+  $('movDelete').addEventListener('click', () => {
+    const id = $('movSel').value; const list = movements(); const m = list.find(x => x.id === id); if (!m) { msg('Choose a saved movement to delete.'); return; }
+    lsSet(LS_MOV, list.filter(x => x.id !== id)); renderMovements(''); msg(`Deleted "${m.name}".`);
+  });
+  $('movLink').addEventListener('click', async () => {
+    const m = { ...snapshot(), name: $('movName').value.trim() || $('movSel').selectedOptions[0]?.textContent.replace(/ \(.*$/, '') || 'Shared movement' };
+    const hash = '#m=' + btoa(unescape(encodeURIComponent(JSON.stringify(m)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const url = location.href.split('#')[0] + hash; history.replaceState(null, '', hash);
+    try { await navigator.clipboard.writeText(url); msg('Link copied. Anyone opening it gets this movement, ready to save.'); }
+    catch (e) { msg('Link is in the address bar. Copy it from there.'); }
+  });
+  function loadFromHash() {
+    const h = new URLSearchParams(location.hash.slice(1)).get('m'); if (!h) return false;
+    try { const m = JSON.parse(decodeURIComponent(escape(atob(h.replace(/-/g, '+').replace(/_/g, '/'))))); applySnapshot(m); $('movName').value = m.name || ''; msg(`Opened "${m.name || 'shared movement'}" from the link. Press Save to keep it in this browser.`); return true; }
+    catch (e) { return false; }
+  }
+  let lastTimer = 0;
+  function rememberLast() { clearTimeout(lastTimer); lastTimer = setTimeout(() => lsSet(LS_LAST, snapshot()), 400); }
+  document.querySelector('.bar').addEventListener('change', rememberLast); document.querySelector('.bar').addEventListener('input', rememberLast);
+  document.querySelector('.pins .params').addEventListener('input', rememberLast);
+  document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', rememberLast));
+
   // ---- transport ----
   function startPlay() {
     stopPlay(); const ac = audio(); if (ac.state === 'suspended') ac.resume();
@@ -781,6 +845,7 @@
     catch (err) { $('status').textContent = `Could not read ${f.name}. ${err.message}`; }
   });
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => drawStrip(-1));
+  renderMovements(''); if (!loadFromHash()) applySnapshot(lsGet(LS_LAST, null));
   applyTranspose(); indexSong(); sel.start = 0; sel.end = song.length; layout(); refresh();
 })();
 </script>
