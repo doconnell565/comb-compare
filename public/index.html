@@ -1,0 +1,753 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comb Compare</title>
+<meta name="description" content="Load a MIDI file and hear it the way a 30, 50, or 72 tooth music box comb would play it. Select one cylinder rotation and export a pin map.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🎼%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  html { color-scheme: light dark; }
+  body { margin: 0; font-size: 14px; font-family: system-ui, sans-serif; }
+  img { max-width: 100%; }
+  [hidden] { display: none !important; }
+</style>
+<style>
+  :root {
+    --ground: #EDEFF1;
+    --surface: #F7F8F9;
+    --sunk: #E2E5E8;
+    --line: #C9CED3;
+    --line-soft: #DDE1E5;
+    --ink: #1B2027;
+    --ink-2: #4A535D;
+    --ink-3: #7B848E;
+    --brass: #B38A3C;
+    --brass-ink: #7E5E20;
+    --brass-soft: #E9DCBF;
+    --verdigris: #3E8778;
+    --verdigris-soft: #CFE5DE;
+    --oxide: #B5503A;
+    --oxide-soft: #F0D3CB;
+    --tooth: #B8BEC5;
+    --focus: #2F6FD6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #14171B;
+      --surface: #1C2026;
+      --sunk: #0F1215;
+      --line: #343A42;
+      --line-soft: #262B32;
+      --ink: #E8EAED;
+      --ink-2: #B5BCC4;
+      --ink-3: #7F8891;
+      --brass: #D4A755;
+      --brass-ink: #E8C87E;
+      --brass-soft: #3A3120;
+      --verdigris: #5FB39E;
+      --verdigris-soft: #1F3B34;
+      --oxide: #D9705A;
+      --oxide-soft: #43241D;
+      --tooth: #3C434B;
+      --focus: #6EA3F5;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #14171B;
+    --surface: #1C2026;
+    --sunk: #0F1215;
+    --line: #343A42;
+    --line-soft: #262B32;
+    --ink: #E8EAED;
+    --ink-2: #B5BCC4;
+    --ink-3: #7F8891;
+    --brass: #D4A755;
+    --brass-ink: #E8C87E;
+    --brass-soft: #3A3120;
+    --verdigris: #5FB39E;
+    --verdigris-soft: #1F3B34;
+    --oxide: #D9705A;
+    --oxide-soft: #43241D;
+    --tooth: #3C434B;
+    --focus: #6EA3F5;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    padding-inline: clamp(16px, 4vw, 40px);
+    padding-block: 28px 56px;
+  }
+  h1, h2, h3 { font-family: "Bricolage Grotesque", "Helvetica Neue", Arial, sans-serif; margin: 0; text-wrap: balance; line-height: 1.1; }
+  h1 { font-size: clamp(30px, 5vw, 44px); font-weight: 700; letter-spacing: -0.01em; }
+  h2 { font-size: 20px; font-weight: 700; }
+  .lede { max-width: 62ch; color: var(--ink-2); margin: 10px 0 0; }
+  .wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 28px; }
+  .eyebrow { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); }
+  .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+
+  /* controls */
+  .bar { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: end; padding: 16px 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+  .field { display: grid; gap: 6px; }
+  .field label, .field .lab { font-size: 12px; font-weight: 600; color: var(--ink-2); }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; background: var(--sunk); }
+  .seg button { appearance: none; border: 0; background: transparent; color: var(--ink-2); font: inherit; font-weight: 600; padding: 8px 14px; cursor: pointer; font-variant-numeric: tabular-nums; }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button[aria-pressed="true"] { background: var(--brass); color: #1B1508; }
+  .seg button:focus-visible, .btn:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .btn { appearance: none; font: inherit; font-weight: 600; padding: 9px 18px; border-radius: 5px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+  .btn.primary { background: var(--ink); color: var(--ground); border-color: var(--ink); min-width: 96px; }
+  .btn:disabled { opacity: 0.5; cursor: default; }
+  input[type="file"] { font: inherit; font-size: 13px; color: var(--ink-2); max-width: 260px; }
+  input[type="number"], input[type="text"], textarea { font: inherit; padding: 7px 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--ink); font-variant-numeric: tabular-nums; }
+  input[type="number"] { width: 92px; }
+  select { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--ink); }
+  .grow { flex: 1 1 200px; }
+  .status { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12px; color: var(--ink-3); }
+  .pair { display: flex; gap: 6px; align-items: center; }
+  .pair span { font-size: 12px; color: var(--ink-3); }
+  #customBox { display: grid; gap: 6px; flex: 1 1 100%; }
+  #customBox textarea { width: 100%; min-height: 54px; font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 13px; }
+
+  /* strip */
+  .strip-card { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px 18px 14px; display: grid; gap: 12px; }
+  .strip-head { display: flex; flex-wrap: wrap; gap: 8px 20px; justify-content: space-between; align-items: baseline; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--ink-2); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .sw { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+  .sw.play { background: var(--brass); }
+  .sw.fold { border: 2px solid var(--verdigris); }
+  .sw.drop { position: relative; }
+  .sw.drop::before, .sw.drop::after { content: ""; position: absolute; left: 5px; top: -1px; width: 2px; height: 13px; background: var(--oxide); transform: rotate(45deg); }
+  .sw.drop::after { transform: rotate(-45deg); }
+  .strip-scroll { overflow-x: auto; overflow-y: hidden; background: var(--sunk); border: 1px solid var(--line-soft); border-radius: 4px; position: relative; }
+  .strip-inner { height: 420px; position: relative; }
+  canvas { display: block; position: sticky; left: 0; top: 0; touch-action: none; cursor: crosshair; }
+  canvas.on-start, canvas.on-end { cursor: col-resize; }
+  canvas.on-move { cursor: grab; }
+  canvas.dragging { cursor: grabbing; }
+  .fill { display: grid; gap: 6px; min-width: 260px; flex: 1 1 320px; }
+  .fill .row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .fill .row b { color: var(--ink); font-weight: 600; }
+  .fill .row .over { color: var(--oxide); }
+  .fill .meter { height: 10px; }
+  .fill .meter .s { background: transparent; }
+  .hint { font-size: 12px; color: var(--ink-3); }
+  .counts { display: flex; flex-wrap: wrap; gap: 6px 22px; font-variant-numeric: tabular-nums; font-size: 13px; color: var(--ink-2); }
+  .counts b { color: var(--ink); font-weight: 600; }
+
+  /* compare */
+  .compare { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  @media (max-width: 760px) { .compare { grid-template-columns: 1fr; } }
+  .comb { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px 18px 14px; display: grid; gap: 10px; align-content: start; cursor: pointer; }
+  .comb:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .comb[aria-pressed="true"] { border-color: var(--brass); box-shadow: inset 0 0 0 1px var(--brass); }
+  .comb .name { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .comb .n { font-family: "Bricolage Grotesque", sans-serif; font-size: 30px; font-weight: 700; line-height: 1; }
+  .comb .n small { font-size: 14px; font-weight: 500; color: var(--ink-3); margin-left: 4px; }
+  .tag { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 7px; border-radius: 3px; }
+  .tag.exact { background: var(--brass-soft); color: var(--brass-ink); }
+  .tag.model { background: var(--sunk); color: var(--ink-3); border: 1px solid var(--line); }
+  .comb svg { width: 100%; height: auto; display: block; }
+  .kv { display: grid; grid-template-columns: 1fr auto; gap: 3px 12px; font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .kv b { color: var(--ink); font-weight: 600; text-align: right; }
+  .kv .drop b { color: var(--oxide); }
+  .kv .fold b { color: var(--verdigris); }
+  .meter { height: 8px; border-radius: 4px; background: var(--sunk); overflow: hidden; display: flex; }
+  .meter i { display: block; height: 100%; }
+  .meter .p { background: var(--brass); } .meter .f { background: var(--verdigris); } .meter .d { background: var(--oxide); }
+  .note { font-size: 13px; color: var(--ink-3); max-width: 78ch; }
+
+  /* pin map */
+  .pins { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px 18px; display: grid; gap: 14px; }
+  .pins .params { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: end; }
+  .pins .summary { display: flex; flex-wrap: wrap; gap: 6px 22px; font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .pins .summary b { color: var(--ink); font-weight: 600; }
+  .pins .summary .warn { color: var(--oxide); }
+  .pins textarea { width: 100%; min-height: 160px; font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12px; line-height: 1.4; white-space: pre; overflow: auto; }
+
+  .about { display: grid; gap: 10px; max-width: 72ch; color: var(--ink-2); font-size: 14px; }
+  .about table { border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .about th, .about td { text-align: left; padding: 6px 14px 6px 0; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+  .about th { font-weight: 600; color: var(--ink); }
+  .about a { color: var(--brass-ink); }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Music box comb simulator</div>
+    <h1>Comb Compare</h1>
+    <p class="lede">Load a MIDI file and hear it the way a 30, 50, or 72 tooth comb would play it. Each tooth is one fixed pitch, so a note the comb lacks is either folded up or down an octave or dropped. A tooth also cannot be plucked again until it stops ringing, so fast repeated notes fall away on the smaller combs. Cut the song to one cylinder rotation and export a pin map for machining.</p>
+  </header>
+
+  <section class="bar" aria-label="Controls">
+    <div class="field">
+      <label for="file">MIDI file</label>
+      <input type="file" id="file" accept=".mid,.midi,audio/midi">
+    </div>
+    <div class="field">
+      <div class="lab">Comb</div>
+      <div class="seg" role="group" aria-label="Comb size">
+        <button type="button" id="seg30" data-comb="30" aria-pressed="true">30</button>
+        <button type="button" id="seg50" data-comb="50" aria-pressed="false">50</button>
+        <button type="button" id="seg72" data-comb="72" aria-pressed="false">72</button>
+        <button type="button" id="segCustom" data-comb="custom" aria-pressed="false">Measured</button>
+      </div>
+    </div>
+    <div class="field">
+      <div class="lab">Selection (seconds)</div>
+      <div class="pair"><input type="number" id="cutStart" min="0" step="0.1" value="0" aria-label="Selection start"><span>to</span><input type="number" id="cutEnd" min="0" step="0.1" value="0" aria-label="Selection end"></div>
+    </div>
+    <div class="field">
+      <label for="rot">Cylinder rotation (s)</label>
+      <input type="number" id="rot" min="1" step="0.1" value="28">
+    </div>
+    <div class="field">
+      <label for="zoom">Zoom</label>
+      <select id="zoom">
+        <option value="fit">Whole song</option>
+        <option value="15">15 px/s</option>
+        <option value="30">30 px/s</option>
+        <option value="60">60 px/s</option>
+        <option value="90" selected>90 px/s</option>
+        <option value="150">150 px/s</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="fold">Notes off the comb</label>
+      <select id="fold">
+        <option value="fold">Fold to nearest octave the comb has</option>
+        <option value="drop">Drop them</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="bass">Notes below the comb</label>
+      <select id="bass">
+        <option value="roots" selected>Keep only if they land at or below C4</option>
+        <option value="fold">Fold up like everything else</option>
+        <option value="drop">Drop them all</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="tempo">Crank speed</label>
+      <select id="tempo">
+        <option value="0.8">Slow (80%)</option>
+        <option value="1" selected>As written</option>
+        <option value="1.25">Fast (125%)</option>
+      </select>
+    </div>
+    <div class="field">
+      <div class="lab">&nbsp;</div>
+      <div style="display:flex; gap:8px">
+        <button type="button" class="btn primary" id="play">Play</button>
+        <button type="button" class="btn" id="stop">Stop</button>
+      </div>
+    </div>
+    <div class="field grow">
+      <div class="lab">Loaded</div>
+      <div class="status" id="status">Example: Für Elise, opening (built in)</div>
+    </div>
+    <div id="customBox" hidden>
+      <label for="customTeeth">Measured comb, lowest tooth first (note names like F3 G3 C4, or MIDI numbers). Repeat a name for a twin tooth.</label>
+      <textarea id="customTeeth" spellcheck="false">F3 G3 C4 D4 E4 F4 G4 A4 A#4 B4 C5 C#5 D5 D#5 E5 F5 F#5 G5 G#5 A5 A#5 B5 C6 C#6 D6 D#6 E6 F6 G6 A6</textarea>
+      <div class="status" id="customStatus"></div>
+    </div>
+  </section>
+
+  <section class="strip-card" aria-label="Strip view">
+    <div class="strip-head">
+      <div>
+        <h2 id="stripTitle">30 tooth comb</h2>
+        <div class="hint">Drag on the strip to select. Drag an edge to trim, the middle to move. Edges snap to the first and last note; hold Alt to place them freely.</div>
+      </div>
+      <div class="fill" aria-live="polite">
+        <div class="row"><span>Selection <b id="selLen">0.0 s</b></span><span>Rotation <b id="rotLen">28.0 s</b></span><span id="silence">Silence <b>0.0 s</b></span></div>
+        <div class="meter" id="fillMeter"><i class="p" style="width:0%"></i><i class="d" style="width:0%"></i></div>
+      </div>
+    </div>
+    <div class="strip-scroll" id="stripScroll"><div class="strip-inner" id="stripInner"><canvas id="strip" width="1200" height="420"></canvas></div></div>
+    <div class="strip-head">
+      <div class="counts" id="counts"></div>
+      <div class="legend">
+        <span><i class="sw play"></i>Played</span>
+        <span><i class="sw fold"></i>Folded an octave</span>
+        <span><i class="sw drop"></i>Dropped</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="strip-head" style="margin-bottom:12px">
+      <h2>Same cut, three combs</h2>
+      <span class="note">Click a comb to hear it. Grey keyboard is C2 to C8. Teeth are drawn as ticks, the cut's notes as bars above them.</span>
+    </div>
+    <div class="compare" id="compare"></div>
+  </section>
+
+  <section class="pins" aria-label="Pin map">
+    <div class="strip-head">
+      <h2>Pin map for the cylinder</h2>
+      <span class="note">One row per pin for the selected comb and selection. Angle runs from the start of the selection over the cylinder rotation time set above; axial position counts from the lowest tooth. Two pins on one tooth closer than the spacing floor keep only the first, the way a real arrangement thins repeated notes.</span>
+    </div>
+    <div class="params">
+      <div class="field"><label for="dia">Cylinder diameter (mm)</label><input type="number" id="dia" min="1" step="0.1" value="13"></div>
+      <div class="field"><label for="pitch">Tooth pitch (mm)</label><input type="number" id="pitch" min="0.1" step="0.01" value="1.5"></div>
+      <div class="field"><label for="pin">Pin diameter (mm)</label><input type="number" id="pin" min="0.1" step="0.05" value="0.5"></div>
+      <div class="field"><label for="gap">Spacing floor (mm)</label><input type="number" id="gap" min="0" step="0.05" value="0.8"></div>
+      <div class="field"><div class="lab">&nbsp;</div><div style="display:flex; gap:8px"><button type="button" class="btn primary" id="save">Save CSV</button><button type="button" class="btn" id="copy">Copy</button></div></div>
+    </div>
+    <div class="summary" id="pinSummary"></div>
+    <textarea id="csv" readonly spellcheck="false" aria-label="Pin map CSV"></textarea>
+  </section>
+
+  <section class="about">
+    <h2>What is modeled</h2>
+    <p>The 30 tooth scale is the real one used by Sankyo and the paper strip boxes: two bass teeth at F3 and G3, a diatonic octave from C4, then chromatic up to F6 with G6 and A6 on top. Sankyo does not publish tuning charts for its 50 and 72 tooth movements. Those combs are tuned to each tune program rather than to a chromatic scale, and a 72 tooth comb spends many of its teeth on duplicates so bass and melody notes can repeat quickly. The 50 and 72 layouts here are approximations built to those descriptions. Once you have a movement in hand, strike each tooth, read the pitches, and enter them under Measured.</p>
+    <div style="overflow-x:auto">
+    <table>
+      <tr><th>Comb</th><th>Range</th><th>Teeth</th><th>Duplicated teeth</th><th>Re-strike floor</th></tr>
+      <tr><td>30</td><td>F3 to A6</td><td>30, gapped bass</td><td>none</td><td>200 ms</td></tr>
+      <tr><td>50 (model)</td><td>G2 to E7</td><td>chromatic C4 to B6, diatonic outside</td><td>none</td><td>150 ms</td></tr>
+      <tr><td>72 (model)</td><td>C2 to C7</td><td>chromatic C3 to C7, diatonic bass</td><td>16, on C5 to D#6</td><td>120 ms, 60 ms with a twin</td></tr>
+    </table>
+    </div>
+    <p>The pin map defaults are assumptions for a Sankyo 30 tooth Orpheus movement, which retailers quote at 25 to 31 seconds per rotation. Measure the rotation time, cylinder diameter and tooth pitch on your own movement and replace them.</p>
+    <p>Sources: the 30 note scale from <a href="https://musicboxmaniacs.com/news/music_box_guide">Music Box Maniacs</a>; comb tuning practice and octave spans from <a href="http://www.herzmusicbox.com/custom-tunes/">Herz Music Box Company</a>; 30 note movement timing from <a href="https://www.musichouseshop.com/store/bn1.30.html">The Music House</a>.</p>
+  </section>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  const NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+  const nn = m => NAMES[m % 12] + (Math.floor(m / 12) - 1);
+  const range = (a, b) => { const r = []; for (let i = a; i <= b; i++) r.push(i); return r; };
+  const $ = id => document.getElementById(id);
+
+  // ---- comb definitions (MIDI note numbers; C4 = 60) ----
+  function makeComb(label, exact, floor, teeth, dup) {
+    const c = { label, exact, floor, teeth: teeth.slice().sort((a, b) => a - b), dup: dup.slice() };
+    c.set = new Set(c.teeth); c.dupSet = new Set(c.dup); c.lo = c.teeth[0]; c.hi = c.teeth[c.teeth.length - 1];
+    c.rows = Array.from(c.set).sort((a, b) => a - b); // one row per distinct pitch
+    return c;
+  }
+  const COMBS = {
+    30: makeComb('30 tooth comb', true, 0.20, [53,55, 60,62,64,65,67,69,70,71, ...range(72,83), 84,85,86,87,88,89,91,93], []),
+    50: makeComb('50 tooth comb (modeled)', false, 0.15, [43,45,47,48,50,52,53,55,57,58,59, ...range(60,95), 96,98,100], []),
+    72: makeComb('72 tooth comb (modeled)', false, 0.12, [36,38,40,41,43,45,47, ...range(48,96)], range(72,87)),
+    custom: null,
+  };
+  function parseTeeth(text) {
+    const out = [], seen = new Map(), dup = [];
+    for (const tok of text.trim().split(/[\s,;]+/).filter(Boolean)) {
+      let m;
+      if (/^\d+$/.test(tok)) m = +tok;
+      else { const r = /^([A-Ga-g])([#b]?)(-?\d)$/.exec(tok); if (!r) throw new Error(`Cannot read "${tok}"`);
+        m = [0,2,4,5,7,9,11]['CDEFGAB'.indexOf(r[1].toUpperCase())] + (r[2] === '#' ? 1 : r[2] === 'b' ? -1 : 0) + (parseInt(r[3], 10) + 1) * 12; }
+      if (m < 0 || m > 127) throw new Error(`"${tok}" is out of MIDI range`);
+      if (seen.has(m)) dup.push(m); else seen.set(m, true);
+      out.push(m);
+    }
+    if (out.length < 2) throw new Error('Enter at least two teeth');
+    return { teeth: Array.from(seen.keys()), dup, count: out.length };
+  }
+  function customComb() {
+    try { const t = parseTeeth($('customTeeth').value); $('customStatus').textContent = `${t.count} teeth, ${nn(Math.min(...t.teeth))} to ${nn(Math.max(...t.teeth))}, ${t.dup.length} twins`;
+      return makeComb(`Measured comb, ${t.count} teeth`, true, 0.20, t.teeth, t.dup); }
+    catch (e) { $('customStatus').textContent = e.message; return COMBS[30]; }
+  }
+  function combFor(id) { return id === 'custom' ? customComb() : COMBS[id]; }
+
+  // ---- built-in example: Für Elise, opening bars (public domain) ----
+  function example() {
+    const s = 0.16;
+    const notes = []; let t = 0;
+    const mel = (list) => list.forEach(([p, d]) => { if (p) notes.push({ p, t, d: d * s * 0.9, v: 0.8 }); t += d * s; });
+    const bass = (at, list) => { let tt = at; list.forEach(([p, d]) => { if (p) notes.push({ p, t: tt, d: d * s * 0.9, v: 0.55 }); tt += d * s; }); };
+    mel([[76,1],[75,1]]);
+    const a = t; mel([[76,1],[75,1],[76,1],[71,1],[74,1],[72,1],[69,2],[0,1]]); bass(a + 6*s, [[45,1],[52,1],[57,1]]);
+    const b = t; mel([[60,1],[64,1],[69,1],[71,2],[0,1]]); bass(b + 3*s, [[40,1],[52,1],[56,1]]);
+    const c = t; mel([[64,1],[68,1],[71,1],[72,2],[0,1]]); bass(c + 3*s, [[45,1],[52,1],[57,1]]);
+    mel([[64,1],[76,1],[75,1]]);
+    const d = t; mel([[76,1],[75,1],[76,1],[71,1],[74,1],[72,1],[69,2],[0,1]]); bass(d + 6*s, [[45,1],[52,1],[57,1]]);
+    const e = t; mel([[60,1],[64,1],[69,1],[71,2],[0,1]]); bass(e + 3*s, [[40,1],[52,1],[56,1]]);
+    const f = t; mel([[64,1],[72,1],[71,1],[69,4]]); bass(f + 3*s, [[45,1],[52,1],[57,1]]);
+    notes.sort((x, y) => x.t - y.t);
+    return { name: 'Für Elise, opening (example)', notes, length: t + 0.5 };
+  }
+
+  // ---- MIDI parser (formats 0 and 1, tempo map, running status) ----
+  function parseMidi(buf) {
+    const d = new DataView(buf); let p = 0;
+    const u32 = () => { const v = d.getUint32(p); p += 4; return v; };
+    const u16 = () => { const v = d.getUint16(p); p += 2; return v; };
+    const str = n => { let s = ''; for (let i = 0; i < n; i++) s += String.fromCharCode(d.getUint8(p + i)); p += n; return s; };
+    if (str(4) !== 'MThd') throw new Error('Not a MIDI file (missing MThd header).');
+    const hlen = u32(); u16(); const ntrk = u16(); const div = u16(); p += hlen - 6;
+    if (div & 0x8000) throw new Error('SMPTE time division is not supported.');
+    const tracks = [];
+    for (let k = 0; k < ntrk && p < d.byteLength; k++) {
+      if (str(4) !== 'MTrk') throw new Error('Malformed track chunk.');
+      const len = u32(); const end = p + len; let tick = 0, status = 0; const ev = [];
+      const vlq = () => { let v = 0, b; do { b = d.getUint8(p++); v = (v << 7) | (b & 0x7f); } while (b & 0x80); return v; };
+      while (p < end) {
+        tick += vlq(); let b = d.getUint8(p);
+        if (b === 0xff) { p++; const type = d.getUint8(p++); const l = vlq();
+          if (type === 0x51) ev.push({ tick, tempo: (d.getUint8(p) << 16) | (d.getUint8(p+1) << 8) | d.getUint8(p+2) });
+          p += l; continue; }
+        if (b === 0xf0 || b === 0xf7) { p++; p += vlq(); continue; }
+        if (b & 0x80) { status = b; p++; } else { b = status; }
+        const hi = b & 0xf0, ch = b & 0x0f;
+        if (hi === 0xc0 || hi === 0xd0) { p++; continue; }
+        const d1 = d.getUint8(p++), d2 = d.getUint8(p++);
+        if (hi === 0x90 && d2 > 0) ev.push({ tick, on: true, ch, p: d1, v: d2 / 127 });
+        else if (hi === 0x80 || hi === 0x90) ev.push({ tick, on: false, ch, p: d1 });
+      }
+      p = end; tracks.push(ev);
+    }
+    const tempos = [{ tick: 0, tempo: 500000 }];
+    tracks.forEach(tr => tr.forEach(e => { if (e.tempo) tempos.push({ tick: e.tick, tempo: e.tempo }); }));
+    tempos.sort((a, b) => a.tick - b.tick);
+    let acc = 0; for (let i = 0; i < tempos.length; i++) { if (i) acc += (tempos[i].tick - tempos[i-1].tick) * tempos[i-1].tempo / div / 1e6; tempos[i].sec = acc; }
+    const toSec = tick => { let i = tempos.length - 1; while (i > 0 && tempos[i].tick > tick) i--; return tempos[i].sec + (tick - tempos[i].tick) * tempos[i].tempo / div / 1e6; };
+    const notes = []; let length = 0;
+    tracks.forEach(tr => {
+      const open = new Map();
+      tr.forEach(e => {
+        if (e.on) { open.set(e.ch * 128 + e.p, e); }
+        else if (e.on === false) { const key = e.ch * 128 + e.p; const s = open.get(key); if (s) {
+          if (e.ch !== 9) { const t = toSec(s.tick), t2 = toSec(e.tick); notes.push({ p: e.p, t, d: Math.max(0.05, t2 - t), v: s.v }); length = Math.max(length, t2); }
+          open.delete(key); } }
+      });
+    });
+    notes.sort((a, b) => a.t - b.t);
+    if (!notes.length) throw new Error('No notes found in this file.');
+    return { notes, length: length + 0.5 };
+  }
+
+  // ---- the selection: the part of the song inside [start, end), re-timed from zero ----
+  const sel = { start: 0, end: 0 };
+  function cutSong() {
+    const a = Math.max(0, Math.min(sel.start, song.length)), b = Math.max(a + 0.25, Math.min(sel.end, song.length));
+    const notes = song.notes.filter(n => n.t >= a && n.t < b).map(n => ({ ...n, t: n.t - a }));
+    return { notes, length: b - a, start: a, end: b };
+  }
+  function snapStart(t, tol) { let best = t, d = tol; for (const o of onsets) { const dd = Math.abs(o - t); if (dd < d) { d = dd; best = o; } } return best; }
+  function snapEnd(t, tol) { let best = t, d = tol; for (const o of ends) { const dd = Math.abs(o - t); if (dd < d) { d = dd; best = o; } } return best; }
+  let onsets = [], ends = [];
+  function indexSong() {
+    onsets = Array.from(new Set(song.notes.map(n => +n.t.toFixed(3)))).sort((a, b) => a - b);
+    ends = Array.from(new Set(song.notes.map(n => +(n.t + n.d).toFixed(3)))).sort((a, b) => a - b);
+  }
+
+  // ---- mapping a cut onto a comb ----
+  function mapSong(cut, comb, foldMode, bassMode) {
+    const out = []; const last = new Map(); const stat = { played: 0, folded: 0, range: 0, fast: 0 };
+    for (const n of cut.notes) {
+      let tooth = null, folded = false;
+      const below = n.p < comb.lo;
+      if (comb.set.has(n.p)) tooth = n.p;
+      else if (below ? bassMode !== 'drop' : foldMode === 'fold') {
+        for (let k = 1; k <= 5 && tooth === null; k++) {
+          if (below && comb.set.has(n.p + 12 * k)) tooth = n.p + 12 * k;
+          else if (n.p > comb.hi && comb.set.has(n.p - 12 * k)) tooth = n.p - 12 * k;
+          else if (!below && n.p <= comb.hi) { if (comb.set.has(n.p + 12 * k)) tooth = n.p + 12 * k; else if (comb.set.has(n.p - 12 * k)) tooth = n.p - 12 * k; }
+        }
+        if (tooth !== null && below && bassMode === 'roots' && tooth > 60) tooth = null;
+        if (tooth !== null) folded = true;
+      }
+      if (tooth === null) { out.push({ ...n, why: 'range' }); stat.range++; continue; }
+      const prev = last.get(tooth);
+      if (prev !== undefined && n.t - prev < 0.005) { out.push({ ...n, tooth, why: 'unison' }); continue; } // two hands on one pitch: one pluck
+      const floor = comb.dupSet.has(tooth) ? comb.floor / 2 : comb.floor;
+      if (prev !== undefined && n.t - prev < floor) { out.push({ ...n, tooth, why: 'fast' }); stat.fast++; continue; }
+      last.set(tooth, n.t);
+      out.push({ ...n, tooth, folded }); if (folded) stat.folded++; else stat.played++;
+    }
+    return { comb, notes: out, stat, total: cut.notes.length };
+  }
+
+  // ---- music box voice (Web Audio) ----
+  let ctx = null, master = null;
+  function audio() {
+    if (ctx) return ctx;
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    master = ctx.createDynamicsCompressor(); master.threshold.value = -18; master.ratio.value = 4;
+    const g = ctx.createGain(); g.gain.value = 0.6;
+    master.connect(g).connect(ctx.destination);
+    return ctx;
+  }
+  function pluck(midi, at, vel) {
+    const f = 440 * Math.pow(2, (midi - 69) / 12);
+    const dur = Math.min(2.6, Math.max(0.5, 2.8 - f / 900));
+    const gain = ctx.createGain(); gain.connect(master);
+    gain.gain.setValueAtTime(0.0001, at); gain.gain.linearRampToValueAtTime(0.5 * vel, at + 0.004); gain.gain.exponentialRampToValueAtTime(0.0002, at + dur);
+    const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f; o.connect(gain); o.start(at); o.stop(at + dur + 0.05);
+    const pf = f * 6.27; if (pf < 18000) {
+      const g2 = ctx.createGain(); g2.connect(master);
+      g2.gain.setValueAtTime(0.0001, at); g2.gain.linearRampToValueAtTime(0.09 * vel, at + 0.002); g2.gain.exponentialRampToValueAtTime(0.0001, at + 0.22);
+      const o2 = ctx.createOscillator(); o2.type = 'sine'; o2.frequency.value = pf; o2.connect(g2); o2.start(at); o2.stop(at + 0.3);
+    }
+    const nb = ctx.createBuffer(1, 441, ctx.sampleRate); const data = nb.getChannelData(0); for (let i = 0; i < 441; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / 441);
+    const src = ctx.createBufferSource(); src.buffer = nb;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = Math.min(6000, f * 3); bp.Q.value = 2;
+    const g3 = ctx.createGain(); g3.gain.value = 0.15 * vel;
+    src.connect(bp).connect(g3).connect(master); src.start(at);
+  }
+
+  // ---- state ----
+  let song = example(); let combId = '30'; let cut = null; let mapped = null, mappedAll = null;
+  let playing = false, startAt = 0, cursor = 0, raf = 0, speed = 1;
+  const canvas = $('strip'), cx = canvas.getContext('2d');
+  const scroller = $('stripScroll'), inner = $('stripInner');
+
+  function rotTime() { return Math.max(1, parseFloat($('rot').value) || 28); }
+  function light() { // cheap: readouts + strip only (used while dragging)
+    cut = cutSong();
+    const comb = combFor(combId);
+    mapped = mapSong(cut, comb, $('fold').value, $('bass').value);
+    $('cutStart').value = cut.start.toFixed(1); $('cutEnd').value = cut.end.toFixed(1);
+    const rot = rotTime(), len = cut.length, over = len > rot;
+    $('selLen').textContent = len.toFixed(1) + ' s'; $('rotLen').textContent = rot.toFixed(1) + ' s';
+    $('silence').innerHTML = over ? `Over by <b class="over">${(len - rot).toFixed(1)} s</b>` : `Silence <b>${(rot - len).toFixed(1)} s</b> (${Math.round(100 * len / rot)}% filled)`;
+    $('fillMeter').innerHTML = over ? `<i class="p" style="width:${(100 * rot / len).toFixed(1)}%"></i><i class="d" style="width:${(100 * (len - rot) / len).toFixed(1)}%"></i>` : `<i class="p" style="width:${(100 * len / rot).toFixed(1)}%"></i>`;
+    drawStrip(-1);
+  }
+  function refresh() {
+    const comb = combFor(combId);
+    mappedAll = mapSong({ notes: song.notes, length: song.length, start: 0, end: song.length }, comb, $('fold').value, $('bass').value);
+    $('stripTitle').textContent = comb.label;
+    document.querySelectorAll('.seg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.comb === combId)));
+    $('customBox').hidden = combId !== 'custom';
+    light(); drawCompare(); buildPinMap();
+    const s = mapped.stat;
+    $('counts').innerHTML = `<span>Notes in selection <b>${mapped.total}</b></span><span>Played as written <b>${s.played}</b></span><span>Folded an octave <b>${s.folded}</b></span><span>Dropped, no tooth <b>${s.range}</b></span><span>Dropped, tooth still ringing <b>${s.fast}</b></span>`;
+  }
+
+  // ---- strip drawing: a sticky canvas the width of the viewport, drawn from the scroll offset ----
+  const LEFT = 44, H = 420;
+  let pxs = 90;
+  function pxPerSec() { const z = $('zoom').value; return z === 'fit' ? Math.max(1, (scroller.clientWidth - LEFT - 40) / song.length) : parseFloat(z); }
+  function layout() { pxs = pxPerSec(); inner.style.width = Math.max(scroller.clientWidth, LEFT + song.length * pxs + 40) + 'px'; }
+  const xOf = t => LEFT + t * pxs - scroller.scrollLeft;
+  const tAt = x => (x - LEFT + scroller.scrollLeft) / pxs;
+  function drawStrip(now) {
+    const comb = mapped.comb; const rowsArr = comb.rows; const rows = rowsArr.length;
+    const dpr = window.devicePixelRatio || 1; const W = scroller.clientWidth;
+    if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) { canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr); canvas.style.width = W + 'px'; canvas.style.height = H + 'px'; }
+    cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const css = getComputedStyle(document.documentElement); const tok = k => css.getPropertyValue(k).trim();
+    cx.fillStyle = tok('--sunk'); cx.fillRect(0, 0, W, H);
+    const rowH = (H - 24) / rows; const y = i => H - 12 - (i + 0.5) * rowH;
+    const t0 = Math.max(0, tAt(LEFT)), t1 = tAt(W); // visible time span
+    const xs = xOf(cut.start), xe = xOf(cut.end);
+    // selection ground
+    cx.fillStyle = tok('--surface'); cx.fillRect(Math.max(LEFT, xs), 0, Math.max(0, Math.min(W, xe) - Math.max(LEFT, xs)), H - 12);
+    // teeth
+    rowsArr.forEach((m, i) => {
+      cx.strokeStyle = tok('--tooth'); cx.lineWidth = m % 12 === 0 ? 1.2 : 0.6; cx.globalAlpha = m % 12 === 0 ? 1 : 0.7;
+      cx.beginPath(); cx.moveTo(LEFT, y(i)); cx.lineTo(W, y(i)); cx.stroke(); cx.globalAlpha = 1;
+    });
+    // seconds
+    cx.font = '10px "IBM Plex Mono", monospace'; cx.textBaseline = 'middle'; cx.textAlign = 'center';
+    const step = pxs >= 60 ? 1 : pxs >= 25 ? 5 : pxs >= 8 ? 10 : 30;
+    for (let s = Math.ceil(t0 / step) * step; s <= Math.min(song.length, t1); s += step) { const x = xOf(s); cx.fillStyle = tok('--ink-3'); cx.fillText(s + 's', x, H - 4); cx.strokeStyle = tok('--line-soft'); cx.lineWidth = 1; cx.beginPath(); cx.moveTo(x, 0); cx.lineTo(x, H - 12); cx.stroke(); }
+    // notes: whole song dimmed, selection full strength
+    const idx = new Map(rowsArr.map((m, i) => [m, i]));
+    const r = Math.max(2.4, Math.min(5, rowH * 0.42));
+    const drawNotes = (list, offset, alpha) => {
+      cx.globalAlpha = alpha;
+      for (const n of list) {
+        if (n.why === 'unison') continue;
+        const ta = n.t + offset; if (ta < t0 - 1 || ta > t1 + 1) continue;
+        if (alpha < 1 && ta >= cut.start && ta < cut.end) continue;
+        const x = xOf(ta);
+        if (n.why === 'range') { const yy = n.p < comb.lo ? y(0) + rowH * 0.9 : y(rows - 1) - rowH * 0.9; cross(x, Math.min(H - 16, Math.max(6, yy)), r, tok('--oxide')); continue; }
+        const yy = y(idx.get(n.tooth));
+        if (n.why === 'fast') { cross(x, yy, r, tok('--oxide')); continue; }
+        const hot = playing && now >= 0 && now + cut.start >= ta && now + cut.start < ta + 0.35;
+        if (n.folded) { cx.strokeStyle = tok('--verdigris'); cx.lineWidth = hot ? 3 : 2; cx.beginPath(); cx.arc(x, yy, r, 0, Math.PI * 2); cx.stroke(); }
+        else { cx.fillStyle = tok('--brass'); cx.beginPath(); cx.arc(x, yy, hot ? r * 1.5 : r, 0, Math.PI * 2); cx.fill(); }
+      }
+      cx.globalAlpha = 1;
+    };
+    drawNotes(mappedAll.notes, 0, 0.28);
+    drawNotes(mapped.notes, cut.start, 1);
+    // rotation band along the top, from the selection start
+    const rot = rotTime(); const xr = xOf(cut.start + rot);
+    cx.fillStyle = tok('--brass'); cx.globalAlpha = 0.55; cx.fillRect(Math.max(LEFT, xs), 0, Math.max(0, Math.min(xe, xr) - Math.max(LEFT, xs)), 5);
+    if (xr < xe) { cx.fillStyle = tok('--oxide'); cx.fillRect(Math.max(LEFT, xr), 0, xe - Math.max(LEFT, xr), 5); }
+    else { cx.globalAlpha = 0.2; cx.fillRect(Math.max(LEFT, xe), 0, Math.max(0, Math.min(W, xr) - Math.max(LEFT, xe)), 5); }
+    cx.globalAlpha = 1;
+    // selection edges
+    cx.strokeStyle = tok('--ink'); cx.lineWidth = 2;
+    for (const x of [xs, xe]) if (x >= LEFT - 2 && x <= W + 2) { cx.beginPath(); cx.moveTo(x, 0); cx.lineTo(x, H - 12); cx.stroke(); cx.fillStyle = tok('--ink'); cx.fillRect(x - 5, 0, 10, 12); }
+    cx.fillStyle = tok('--ink'); cx.textAlign = 'left'; cx.font = '600 11px "IBM Plex Sans", sans-serif';
+    if (xe - xs > 60) cx.fillText(`${cut.length.toFixed(1)} s`, Math.max(LEFT, xs) + 8, 20);
+    // playhead
+    if (playing && now >= 0) { const x = xOf(cut.start + now); cx.strokeStyle = tok('--verdigris'); cx.lineWidth = 1.5; cx.beginPath(); cx.moveTo(x, 0); cx.lineTo(x, H - 12); cx.stroke(); }
+    // sticky row labels
+    cx.fillStyle = tok('--sunk'); cx.fillRect(0, 0, LEFT - 1, H);
+    cx.font = '10px "IBM Plex Mono", monospace'; cx.textAlign = 'right';
+    rowsArr.forEach((m, i) => {
+      if (m % 12 === 0 || (rows <= 30 && m % 12 === 5)) { cx.fillStyle = tok('--ink-3'); cx.fillText(nn(m), LEFT - 6, y(i)); }
+      if (comb.dupSet.has(m)) { cx.fillStyle = tok('--brass'); cx.globalAlpha = 0.35; cx.fillRect(LEFT - 3, y(i) - 1, 3, 2); cx.globalAlpha = 1; }
+    });
+  }
+  function cross(x, y, r, color) { cx.strokeStyle = color; cx.lineWidth = 1.6; cx.beginPath(); cx.moveTo(x - r, y - r); cx.lineTo(x + r, y + r); cx.moveTo(x + r, y - r); cx.lineTo(x - r, y + r); cx.stroke(); }
+
+  // ---- selection dragging ----
+  let drag = null;
+  const GRIP = 8;
+  function hit(x) { const xs = xOf(cut.start), xe = xOf(cut.end); if (Math.abs(x - xs) <= GRIP) return 'start'; if (Math.abs(x - xe) <= GRIP) return 'end'; if (x > xs && x < xe) return 'move'; return 'new'; }
+  canvas.addEventListener('pointerdown', e => {
+    if (e.button !== 0 || e.offsetX < LEFT) return;
+    const mode = hit(e.offsetX); const t = tAt(e.offsetX);
+    drag = { mode, t0: t, s0: cut.start, e0: cut.end, moved: false };
+    if (mode === 'new') { sel.start = t; sel.end = t + 0.25; }
+    canvas.setPointerCapture(e.pointerId); canvas.classList.add('dragging'); stopPlay();
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (!drag) { canvas.className = 'on-' + hit(e.offsetX); return; }
+    const t = Math.max(0, Math.min(song.length, tAt(e.offsetX))); const tol = e.altKey ? 0 : 12 / pxs; drag.moved = true;
+    if (drag.mode === 'start') sel.start = Math.min(snapStart(t, tol), sel.end - 0.25);
+    else if (drag.mode === 'end') sel.end = Math.max(snapEnd(t, tol), sel.start + 0.25);
+    else if (drag.mode === 'move') { const len = drag.e0 - drag.s0; let a = drag.s0 + (t - drag.t0); a = Math.max(0, Math.min(song.length - len, a)); a = snapStart(a, tol); sel.start = a; sel.end = a + len; }
+    else { const a = Math.min(drag.t0, t), b = Math.max(drag.t0, t); sel.start = snapStart(a, tol); sel.end = Math.max(snapEnd(b, tol), sel.start + 0.25); }
+    light();
+  });
+  const endDrag = e => { if (!drag) return; canvas.releasePointerCapture?.(e.pointerId); canvas.classList.remove('dragging'); const was = drag; drag = null; if (was.mode === 'new' && !was.moved) { sel.start = was.s0; sel.end = was.e0; } refresh(); };
+  canvas.addEventListener('pointerup', endDrag); canvas.addEventListener('pointercancel', endDrag);
+  scroller.addEventListener('scroll', () => { if (!playing) drawStrip(-1); }, { passive: true });
+  new ResizeObserver(() => { layout(); if (mapped) drawStrip(-1); }).observe(scroller);
+  function revealSelection() { const x = LEFT + cut.start * pxs; if (x < scroller.scrollLeft + LEFT || x > scroller.scrollLeft + scroller.clientWidth * 0.8) scroller.scrollLeft = Math.max(0, x - scroller.clientWidth * 0.25); }
+
+  // ---- comparison cards ----
+  function drawCompare() {
+    const el = $('compare'); el.innerHTML = '';
+    const hist = new Map(); cut.notes.forEach(n => hist.set(n.p, (hist.get(n.p) || 0) + 1));
+    const maxH = Math.max(1, ...hist.values());
+    const LO = 36, HI = 108, W = 420, KH = 26, HH = 44, GAP = 4; const xOf = m => ((m - LO) / (HI - LO)) * W;
+    const ids = combId === 'custom' ? ['custom', '30', '50', '72'] : ['30', '50', '72'];
+    for (const id of ids) {
+      const c = combFor(id); const m = mapSong(cut, c, $('fold').value, $('bass').value); const s = m.stat; const total = Math.max(1, m.total);
+      let svg = `<svg viewBox="0 0 ${W} ${KH + HH + GAP + 14}" role="img" aria-label="Range of ${c.label} against the cut">`;
+      for (let k = LO; k <= HI; k++) { const black = [1,3,6,8,10].includes(k % 12); svg += `<rect x="${xOf(k)}" y="${HH + GAP}" width="${W / (HI - LO)}" height="${black ? KH * 0.6 : KH}" fill="${black ? 'var(--line)' : 'var(--sunk)'}" stroke="var(--line-soft)" stroke-width="0.4"/>`; }
+      for (const t of c.rows) if (t >= LO && t <= HI) svg += `<rect x="${xOf(t) + 0.6}" y="${HH + GAP + KH - 6}" width="${W / (HI - LO) - 1.2}" height="5" fill="${c.dupSet.has(t) ? 'var(--brass-ink)' : 'var(--brass)'}"/>`;
+      const mappedByPitch = new Map(); m.notes.forEach(n => { if (!n.why || n.why === 'unison' || n.why === 'fast') mappedByPitch.set(n.p, n.folded ? 'fold' : 'ok'); });
+      for (const [p, n] of hist) { if (p < LO || p > HI) continue; const h = 4 + (n / maxH) * (HH - 6); const st = mappedByPitch.get(p); svg += `<rect x="${xOf(p) + 0.4}" y="${HH - h}" width="${W / (HI - LO) - 0.8}" height="${h}" fill="${st === 'ok' ? 'var(--brass)' : st === 'fold' ? 'var(--verdigris)' : 'var(--oxide)'}"/>`; }
+      for (let o = 2; o <= 8; o++) svg += `<text x="${xOf(o * 12)}" y="${HH + GAP + KH + 11}" font-size="9" font-family="IBM Plex Mono, monospace" fill="var(--ink-3)">C${o}</text>`;
+      svg += '</svg>';
+      const pct = k => Math.round(100 * s[k] / total);
+      const card = document.createElement('div'); card.className = 'comb'; card.setAttribute('role', 'button'); card.tabIndex = 0; card.setAttribute('aria-pressed', String(id === combId));
+      const n = id === 'custom' ? c.teeth.length + c.dup.length : id;
+      card.innerHTML = `<div class="name"><span class="n">${n}<small>teeth</small></span><span class="tag ${c.exact ? 'exact' : 'model'}">${id === 'custom' ? 'Measured' : c.exact ? 'Real scale' : 'Approximation'}</span></div>
+        ${svg}
+        <div class="meter"><i class="p" style="width:${pct('played')}%"></i><i class="f" style="width:${pct('folded')}%"></i><i class="d" style="width:${Math.max(0, 100 - pct('played') - pct('folded'))}%"></i></div>
+        <div class="kv"><span>Range</span><b>${nn(c.lo)} to ${nn(c.hi)}</b><span>Played as written</span><b>${s.played}</b><span class="fold">Folded an octave</span><b class="fold">${s.folded}</b><span class="drop">Dropped, no tooth</span><b>${s.range}</b><span class="drop">Dropped, still ringing</span><b>${s.fast}</b></div>`;
+      const pick = () => { combId = id; refresh(); startPlay(); };
+      card.addEventListener('click', pick); card.addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); pick(); } });
+      el.appendChild(card);
+    }
+  }
+
+  // ---- pin map ----
+  let csvText = '';
+  function buildPinMap() {
+    const rot = rotTime(), dia = parseFloat($('dia').value) || 13, pitch = parseFloat($('pitch').value) || 1.5, pin = parseFloat($('pin').value) || 0.5, gap = parseFloat($('gap').value) || 0;
+    const mmPerSec = Math.PI * dia / rot;
+    const comb = mapped.comb; const rowIdx = new Map(comb.rows.map((m, i) => [m, i]));
+    const rows = [], thinned = [], last = new Map();
+    for (const n of mapped.notes) {
+      if (n.why) continue;
+      const prev = last.get(n.tooth);
+      const arc = prev === undefined ? null : (n.t - prev) * mmPerSec;
+      if (arc !== null && arc < gap) { thinned.push([n.t.toFixed(3), nn(n.tooth), arc.toFixed(2)]); continue; }
+      last.set(n.tooth, n.t);
+      rows.push([rows.length + 1, n.t.toFixed(3), rowIdx.get(n.tooth) + 1, nn(n.tooth), n.folded ? nn(n.p) : '', (360 * n.t / rot).toFixed(2), (rowIdx.get(n.tooth) * pitch).toFixed(2), arc === null ? '' : arc.toFixed(2)]);
+    }
+    const dropped = mapped.notes.filter(n => n.why === 'range' || n.why === 'fast').map(n => [n.t.toFixed(3), nn(n.p), n.why === 'range' ? 'no tooth' : 'tooth still ringing']);
+    const over = cut.length > rot;
+    const lines = [
+      `# ${song.name}, selection ${cut.start.toFixed(1)} to ${cut.end.toFixed(1)} s, ${comb.label}`,
+      `# rotation ${rot} s, cylinder dia ${dia} mm, tooth pitch ${pitch} mm, pin dia ${pin} mm, same-tooth spacing floor ${gap} mm (${(gap / mmPerSec).toFixed(2)} s)`,
+      `# ${rows.length} pins. ${thinned.length} repeated notes thinned for spacing, ${dropped.length} notes dropped (listed at end).${over ? ' WARNING: selection is longer than one rotation.' : ''}`,
+      'pin,time_s,tooth_from_bass,tooth_note,folded_from,angle_deg,axial_mm,arc_from_prev_same_tooth_mm',
+      ...rows.map(r => r.join(',')),
+      '# thinned (time_s,note,spacing_mm)', ...thinned.map(r => r.join(',')),
+      '# dropped (time_s,note,reason)', ...dropped.map(r => r.join(',')),
+    ];
+    csvText = lines.join('\n') + '\n';
+    $('csv').value = csvText;
+    $('pinSummary').innerHTML = `<span>Pins <b>${rows.length}</b></span><span>Thinned for spacing <b>${thinned.length}</b></span><span>Dropped <b>${dropped.length}</b></span><span>Selection covers <b>${(360 * cut.length / rot).toFixed(0)}°</b> of the rotation${over ? ' <b class="warn">longer than one rotation</b>' : ''}</span><span>Surface speed <b>${mmPerSec.toFixed(2)} mm/s</b></span>`;
+  }
+  function csvName() { return (song.name.replace(/\.midi?$/i, '').replace(/[^\w.-]+/g, '-').replace(/^-|-$/g, '') || 'song') + '-pinmap.csv'; }
+  // Saving: inside the claude.ai artifact sandbox the page must ask the host; standalone it is a plain download.
+  let downloads = null; const hosted = !!(window.claude && window.claude.use);
+  if (hosted) window.claude.use('downloads').then(d => { downloads = d; if (!d) $('save').hidden = true; }).catch(() => { $('save').hidden = true; });
+  $('save').addEventListener('click', async () => {
+    const done = () => { $('save').textContent = 'Saved'; setTimeout(() => { $('save').textContent = 'Save CSV'; }, 1800); };
+    if (!hosted) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csvText], { type: 'text/csv' })); a.download = csvName(); document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); done(); return; }
+    if (!downloads) return;
+    try { await downloads.save({ filename: csvName(), data: csvText }); done(); }
+    catch (e) { if (e && e.code !== 'declined') $('pinSummary').insertAdjacentHTML('beforeend', `<span class="warn">Could not save: ${e.message || e.code}. Use Copy instead.</span>`); }
+  });
+  $('copy').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(csvText); $('copy').textContent = 'Copied'; }
+    catch (e) { $('csv').select(); document.execCommand('copy'); $('copy').textContent = 'Copied'; }
+    setTimeout(() => { $('copy').textContent = 'Copy'; }, 1800);
+  });
+
+  // ---- transport ----
+  function startPlay() {
+    stopPlay(); const ac = audio(); if (ac.state === 'suspended') ac.resume();
+    speed = parseFloat($('tempo').value); playing = true; startAt = ac.currentTime + 0.1; cursor = 0;
+    $('play').textContent = 'Playing';
+    tick();
+  }
+  function tick() {
+    const ac = ctx; const now = (ac.currentTime - startAt) * speed;
+    const notes = mapped.notes;
+    while (cursor < notes.length && notes[cursor].t <= now + 0.4) {
+      const n = notes[cursor++]; if (n.why) continue;
+      pluck(n.tooth, startAt + n.t / speed, n.v);
+    }
+    drawStrip(Math.max(0, now));
+    const px = LEFT + (cut.start + now) * pxs; if (px > scroller.scrollLeft + scroller.clientWidth - 120 || px < scroller.scrollLeft + LEFT) scroller.scrollLeft = px - 120;
+    if (now > cut.length + 1.5) { stopPlay(); return; }
+    raf = requestAnimationFrame(tick);
+  }
+  function stopPlay() { playing = false; cancelAnimationFrame(raf); $('play').textContent = 'Play'; if (mapped) drawStrip(-1); }
+
+  // ---- wiring ----
+  $('play').addEventListener('click', startPlay);
+  $('stop').addEventListener('click', stopPlay);
+  ['fold', 'bass'].forEach(id => $(id).addEventListener('change', () => { stopPlay(); refresh(); }));
+  ['cutStart', 'cutEnd'].forEach(id => $(id).addEventListener('change', () => { stopPlay(); sel.start = parseFloat($('cutStart').value) || 0; sel.end = parseFloat($('cutEnd').value) || 0; if (sel.end <= sel.start) sel.end = sel.start + 0.25; refresh(); revealSelection(); }));
+  $('rot').addEventListener('input', () => { light(); buildPinMap(); });
+  ['dia', 'pitch', 'pin', 'gap'].forEach(id => $(id).addEventListener('input', buildPinMap));
+  $('zoom').addEventListener('change', () => { const keep = cut.start; layout(); drawStrip(-1); scroller.scrollLeft = Math.max(0, LEFT + keep * pxs - scroller.clientWidth * 0.25); drawStrip(-1); });
+  $('customTeeth').addEventListener('input', () => { if (combId === 'custom') refresh(); });
+  document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => { combId = b.dataset.comb; refresh(); if (playing) startPlay(); }));
+  $('file').addEventListener('change', async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try { const parsed = parseMidi(await f.arrayBuffer()); song = { name: f.name, ...parsed }; $('status').textContent = `${f.name}: ${parsed.notes.length} notes, ${parsed.length.toFixed(1)} s`;
+      indexSong(); sel.start = 0; sel.end = snapEnd(Math.min(parsed.length, rotTime()), 2); if (parsed.length > 90 && $('zoom').value === '90') $('zoom').value = '30'; layout(); stopPlay(); refresh(); scroller.scrollLeft = 0; drawStrip(-1); }
+    catch (err) { $('status').textContent = `Could not read ${f.name}. ${err.message}`; }
+  });
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => drawStrip(-1));
+  indexSong(); sel.start = 0; sel.end = song.length; layout(); refresh();
+})();
+</script>
+
+</body>
+</html>
