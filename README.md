@@ -17,4 +17,4 @@ The page is `public/index.html`. Served as static assets on Cloudflare Workers.
 
 ## Push to deploy
 
-Every push to `main` runs `.github/workflows/deploy.yml`, which deploys with wrangler. It needs one repository secret, `CLOUDFLARE_API_TOKEN`, created at https://dash.cloudflare.com/profile/api-tokens with the "Edit Cloudflare Workers" template.
+The Worker is connected to this repository through Cloudflare Workers Builds. Every push to `main` builds and deploys inside Cloudflare, with no API token stored in GitHub. Manual deploys still work with `npm run deploy`.
