@@ -570,7 +570,7 @@
     $('stripTitle').textContent = comb.label;
     document.querySelectorAll('.seg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.comb === combId)));
     $('customBox').hidden = combId !== 'custom';
-    light(); drawCompare(); buildPinMap();
+    light(); drawCompare(); buildPinMap(); rememberLast();
     const s = mapped.stat;
     $('counts').innerHTML = `<span>Notes in selection <b>${mapped.total}</b></span><span>Played as written <b>${s.played}</b></span><span>Folded an octave <b>${s.folded}</b></span><span>Dropped, no tooth <b>${s.range}</b></span><span>Dropped, tooth still ringing <b>${s.fast}</b></span>`;
   }
@@ -753,13 +753,27 @@
   const LS_MOV = 'combcompare.movements', LS_LAST = 'combcompare.last';
   const lsGet = (k, fb) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch (e) { return fb; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } };
-  function snapshot() { return { comb: combId, teeth: $('customTeeth').value.trim(), rot: $('rot').value, dia: $('dia').value, pitch: $('pitch').value, pin: $('pin').value, gap: $('gap').value, fold: $('fold').value, bass: $('bass').value, transpose: $('transpose').value }; }
+  function snapshot() { return { comb: combId, teeth: $('customTeeth').value.trim(), rot: $('rot').value, dia: $('dia').value, pitch: $('pitch').value, pin: $('pin').value, gap: $('gap').value, fold: $('fold').value, bass: $('bass').value, transpose: $('transpose').value, selStart: sel.start, selEnd: sel.end, zoom: $('zoom').value, tempo: $('tempo').value }; }
   function applySnapshot(m) {
     if (!m) return;
     if (m.teeth) $('customTeeth').value = m.teeth;
     for (const k of ['rot', 'dia', 'pitch', 'pin', 'gap']) if (m[k] !== undefined && m[k] !== '') $(k).value = m[k];
     if (m.fold) $('fold').value = m.fold; if (m.bass) $('bass').value = m.bass; if (m.transpose !== undefined) $('transpose').value = m.transpose;
     if (m.comb && (m.comb === 'custom' ? !!m.teeth : COMBS[m.comb])) combId = m.comb;
+    if (m.zoom) $('zoom').value = m.zoom; if (m.tempo) $('tempo').value = m.tempo;
+  }
+  // the loaded MIDI itself, so a crash or reload does not mean finding the file again (kept if under ~2 MB)
+  const LS_SONG = 'combcompare.song';
+  function rememberSong(name, buf) {
+    if (buf.byteLength > 2 * 1024 * 1024) { try { localStorage.removeItem(LS_SONG); } catch (e) {} return; }
+    let b = ''; const u = new Uint8Array(buf); for (let i = 0; i < u.length; i += 0x8000) b += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
+    lsSet(LS_SONG, { name, b64: btoa(b), at: Date.now() });
+  }
+  function restoreSong() {
+    const st = lsGet(LS_SONG, null); if (!st || !st.b64) return false;
+    try { const bin = atob(st.b64); const u = new Uint8Array(bin.length); for (let i = 0; i < u.length; i++) u[i] = bin.charCodeAt(i);
+      const parsed = parseMidi(u.buffer); raw = { name: st.name, ...parsed }; $('status').textContent = `${st.name}: ${parsed.notes.length} notes, ${parsed.length.toFixed(1)} s (restored from last time)`; return true; }
+    catch (e) { return false; }
   }
   function movements() { const l = lsGet(LS_MOV, []); return Array.isArray(l) ? l : []; }
   function renderMovements(selectedId) {
@@ -797,8 +811,8 @@
     try { const m = JSON.parse(decodeURIComponent(escape(atob(h.replace(/-/g, '+').replace(/_/g, '/'))))); applySnapshot(m); $('movName').value = m.name || ''; msg(`Opened "${m.name || 'shared movement'}" from the link. Press Save to keep it in this browser.`); return true; }
     catch (e) { return false; }
   }
-  let lastTimer = 0;
-  function rememberLast() { clearTimeout(lastTimer); lastTimer = setTimeout(() => lsSet(LS_LAST, snapshot()), 400); }
+  var lastTimer = 0;
+  function rememberLast() { if (!cut) return; clearTimeout(lastTimer); lastTimer = setTimeout(() => lsSet(LS_LAST, snapshot()), 400); }
   document.querySelector('.bar').addEventListener('change', rememberLast); document.querySelector('.bar').addEventListener('input', rememberLast);
   document.querySelector('.pins .params').addEventListener('input', rememberLast);
   document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', rememberLast));
@@ -840,13 +854,17 @@
   document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => { combId = b.dataset.comb; refresh(); if (playing) startPlay(); }));
   $('file').addEventListener('change', async e => {
     const f = e.target.files[0]; if (!f) return;
-    try { const parsed = parseMidi(await f.arrayBuffer()); raw = { name: f.name, ...parsed }; applyTranspose(); $('status').textContent = `${f.name}: ${parsed.notes.length} notes, ${parsed.length.toFixed(1)} s`;
+    try { const buf = await f.arrayBuffer(); const parsed = parseMidi(buf); raw = { name: f.name, ...parsed }; rememberSong(f.name, buf); applyTranspose(); $('status').textContent = `${f.name}: ${parsed.notes.length} notes, ${parsed.length.toFixed(1)} s`;
       indexSong(); sel.start = 0; sel.end = snapEnd(Math.min(parsed.length, rotTime()), 2); if (parsed.length > 90 && $('zoom').value === '90') $('zoom').value = '30'; layout(); stopPlay(); refresh(); scroller.scrollLeft = 0; drawStrip(-1); }
     catch (err) { $('status').textContent = `Could not read ${f.name}. ${err.message}`; }
   });
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => drawStrip(-1));
-  renderMovements(''); if (!loadFromHash()) applySnapshot(lsGet(LS_LAST, null));
-  applyTranspose(); indexSong(); sel.start = 0; sel.end = song.length; layout(); refresh();
+  renderMovements(''); const last = lsGet(LS_LAST, null); if (!loadFromHash()) applySnapshot(last);
+  const restored = restoreSong();
+  applyTranspose(); indexSong();
+  if (restored && last && typeof last.selStart === 'number' && last.selEnd > last.selStart && last.selEnd <= song.length + 0.01) { sel.start = last.selStart; sel.end = last.selEnd; }
+  else { sel.start = 0; sel.end = restored ? snapEnd(Math.min(song.length, rotTime()), 2) : song.length; }
+  layout(); refresh(); if (restored) revealSelection();
 })();
 </script>
 
