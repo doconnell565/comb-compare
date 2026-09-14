@@ -67,17 +67,33 @@ def make_cylinder():
             print("end chamfer skipped:", e)
 
     hd, depth, ch = C["hole_diameter"], C["hole_depth"], C["hole_chamfer"]
-    tools = []
+    # one tool per pin: blind hole plus entry chamfer cone, fused, then cut one at a time so the result stays a single solid
+    hole0 = cq.Solid.makeCylinder(hd / 2, depth + 0.5, cq.Vector(R - depth, 0, 0), cq.Vector(1, 0, 0))
+    if ch > 0:
+        cone0 = cq.Solid.makeCone(hd / 2, hd / 2 + ch + 0.3, ch + 0.3, cq.Vector(R - ch, 0, 0), cq.Vector(1, 0, 0))
+        tool0 = hole0.fuse(cone0).clean()
+    else:
+        tool0 = hole0
+    def hole_present(solid, angle, z):
+        th = math.radians(angle)
+        probe = cq.Vector((R - depth * 0.5) * math.cos(th), (R - depth * 0.5) * math.sin(th), z)
+        return not solid.isInside(probe, 1e-4)
     for p in pins:
-        th = math.radians(p["angle"])
         z = z_of(p["tooth"])
-        # blind hole: cylinder along +X from R-depth to R+0.5, then rotated about Z and lifted to z
-        hole = cq.Solid.makeCylinder(hd / 2, depth + 0.5, cq.Vector(R - depth, 0, 0), cq.Vector(1, 0, 0))
-        tools.append(hole.rotate(cq.Vector(0, 0, 0), cq.Vector(0, 0, 1), p["angle"]).translate(cq.Vector(0, 0, z)))
-        if ch > 0:
-            cone = cq.Solid.makeCone(hd / 2, hd / 2 + ch + 0.3, ch + 0.3, cq.Vector(R - ch, 0, 0), cq.Vector(1, 0, 0))
-            tools.append(cone.rotate(cq.Vector(0, 0, 0), cq.Vector(0, 0, 1), p["angle"]).translate(cq.Vector(0, 0, z)))
-    body = body.cut(cq.Compound.makeCompound(tools))
+        # the OCC boolean occasionally fails silently on one tool; verify each hole and retry with a hair of rotation
+        for nudge in (0.0, 0.02, -0.02, 0.05):
+            tool = tool0.rotate(cq.Vector(0, 0, 0), cq.Vector(0, 0, 1), p["angle"] + nudge).translate(cq.Vector(0, 0, z))
+            trial = body.cut(tool)
+            if len(trial.solids().vals()) == 1 and hole_present(trial.val(), p["angle"], z):
+                body = trial
+                if nudge:
+                    print(f"pin {p['n']} needed a {nudge} deg nudge to cut")
+                break
+        else:
+            sys.exit(f"could not cut the hole for pin {p['n']} at {p['angle']} deg, tooth {p['tooth']}")
+    n_solids = len(body.solids().vals())
+    if n_solids != 1:
+        sys.exit(f"cylinder boolean produced {n_solids} solids; expected 1")
 
     # index notch at angle 0 on the z=0 end: the tune start and the shop's angular datum
     nw, nd = C["index_notch_width"], C["index_notch_depth"]
@@ -91,12 +107,15 @@ def make_punch():
     body = cq.Workplane("XY").circle(PU["body_diameter"] / 2).extrude(PU["length"] - PU["tip_length"])
     tip = cq.Workplane("XY").workplane(offset=PU["length"] - PU["tip_length"]).circle(PU["tip_diameter"] / 2).extrude(PU["tip_length"])
     body = body.union(tip)
-    # concave face matching the cylinder, so the punch seats squarely on the barrel
-    saddle = cq.Solid.makeCylinder(R, PU["tip_diameter"] * 2, cq.Vector(0, -PU["tip_diameter"], PU["length"] + R), cq.Vector(0, 1, 0))
+    # concave face matching the cylinder: a groove of radius R across the tip, its edges at the tip face and its
+    # centre recessed by the sag of that arc over the tip width, so the punch seats on the barrel's crest
+    half_tip = PU["tip_diameter"] / 2
+    sag = R - math.sqrt(R * R - half_tip * half_tip)
+    saddle = cq.Solid.makeCylinder(R, PU["tip_diameter"] * 2, cq.Vector(0, -PU["tip_diameter"], PU["length"] - sag + R), cq.Vector(0, 1, 0))
     body = body.cut(saddle)
-    # the height-stop bore: pin diameter plus clearance, depth = standoff, measured from the lowest point of the saddle
+    # the height-stop bore: pin diameter plus clearance, depth = standoff below the deepest point of the groove
     bore_d = PIN["diameter"] + PU["bore_clearance"]
-    bore = cq.Solid.makeCylinder(bore_d / 2, PIN["standoff"] + R + 1, cq.Vector(0, 0, PU["length"] - PIN["standoff"]), cq.Vector(0, 0, 1))
+    bore = cq.Solid.makeCylinder(bore_d / 2, PIN["standoff"] + R + 1, cq.Vector(0, 0, PU["length"] - sag - PIN["standoff"]), cq.Vector(0, 0, 1))
     body = body.cut(bore)
     if PU.get("shank_flat"):
         flat = cq.Workplane("XY").box(PU["body_diameter"], PU["body_diameter"], 12, centered=(True, True, False)).translate((PU["body_diameter"] * 0.5 + PU["body_diameter"] * 0.4, 0, 4))
