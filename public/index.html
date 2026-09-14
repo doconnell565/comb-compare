@@ -180,6 +180,16 @@
   .movements .msg { font-size: 12px; color: var(--ink-3); flex: 1 1 200px; }
   .pins textarea { width: 100%; min-height: 160px; font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12px; line-height: 1.4; white-space: pre; overflow: auto; }
 
+  #printArea { display: none; }
+  @media print {
+    body { background: #fff; padding: 0; }
+    .wrap { display: none; }
+    #printArea { display: block; }
+    #printArea svg { display: block; }
+    @page { margin: 8mm; }
+  }
+  .template { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: end; }
+  .template .chk { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); padding-bottom: 9px; }
   .about { display: grid; gap: 10px; max-width: 72ch; color: var(--ink-2); font-size: 14px; }
   .about table { border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
   .about th, .about td { text-align: left; padding: 6px 14px 6px 0; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
@@ -330,6 +340,16 @@
     </div>
     <div class="summary" id="pinSummary"></div>
     <textarea id="csv" readonly spellcheck="false" aria-label="Pin map CSV"></textarea>
+    <div class="strip-head" style="margin-top:6px">
+      <h2 style="font-size:17px">Drilling template</h2>
+      <span class="note">A 1:1 paper strip to wrap around the blank and centre punch through. Print at 100% scale, not fit to page, and check the scale bar with a ruler before trusting it. Bass tooth is at the left edge.</span>
+    </div>
+    <div class="template">
+      <label class="chk"><input type="checkbox" id="tplMirror"> Mirror (if the tune runs backwards when wrapped)</label>
+      <button type="button" class="btn" id="tplPrint">Print template</button>
+      <button type="button" class="btn" id="tplSave">Save SVG</button>
+      <span class="note" id="tplMsg"></span>
+    </div>
   </section>
 
   <section class="about">
@@ -347,6 +367,7 @@
     <p>Sources: the 30 note scale from <a href="https://musicboxmaniacs.com/news/music_box_guide">Music Box Maniacs</a>; comb tuning practice and octave spans from <a href="http://www.herzmusicbox.com/custom-tunes/">Herz Music Box Company</a>; 30 note movement timing from <a href="https://www.musichouseshop.com/store/bn1.30.html">The Music House</a>.</p>
   </section>
 </div>
+<div id="printArea" aria-hidden="true"></div>
 
 <script>
 (function () {
@@ -703,12 +724,12 @@
   }
 
   // ---- pin map ----
-  let csvText = '';
+  let csvText = ''; let pinRows = [];
   function buildPinMap() {
     const rot = rotTime(), dia = parseFloat($('dia').value) || 13, pitch = parseFloat($('pitch').value) || 1.5, pin = parseFloat($('pin').value) || 0.5, gap = parseFloat($('gap').value) || 0;
     const mmPerSec = Math.PI * dia / rot;
     const comb = mapped.comb; const rowIdx = new Map(comb.rows.map((m, i) => [m, i]));
-    const rows = [], thinned = [], last = new Map();
+    const rows = [], thinned = [], last = new Map(); pinRows = [];
     for (const n of mapped.notes) {
       if (n.why) continue;
       const prev = last.get(n.tooth);
@@ -716,6 +737,7 @@
       if (arc !== null && arc < gap) { thinned.push([n.t.toFixed(3), nn(n.tooth), arc.toFixed(2)]); continue; }
       last.set(n.tooth, n.t);
       rows.push([rows.length + 1, n.t.toFixed(3), rowIdx.get(n.tooth) + 1, nn(n.tooth), n.folded ? nn(n.p) : '', (360 * n.t / rot).toFixed(2), (rowIdx.get(n.tooth) * pitch).toFixed(2), arc === null ? '' : arc.toFixed(2)]);
+      pinRows.push({ t: n.t, row: rowIdx.get(n.tooth), note: nn(n.tooth), angle: 360 * n.t / rot, axial: rowIdx.get(n.tooth) * pitch });
     }
     const dropped = mapped.notes.filter(n => n.why === 'range' || n.why === 'fast').map(n => [n.t.toFixed(3), nn(n.p), n.why === 'range' ? 'no tooth' : 'tooth still ringing']);
     const over = cut.length > rot;
@@ -747,6 +769,44 @@
     try { await navigator.clipboard.writeText(csvText); $('copy').textContent = 'Copied'; }
     catch (e) { $('csv').select(); document.execCommand('copy'); $('copy').textContent = 'Copied'; }
     setTimeout(() => { $('copy').textContent = 'Copy'; }, 1800);
+  });
+
+  // ---- 1:1 drilling template (SVG in millimetres) ----
+  function buildTemplate() {
+    const dia = parseFloat($('dia').value) || 13, pitch = parseFloat($('pitch').value) || 1.5, rot = rotTime();
+    const comb = mapped.comb, rows = comb.rows.length, circ = Math.PI * dia, mirror = $('tplMirror').checked;
+    const M = 12, W = (rows - 1) * pitch + 2 * M, L = circ, H = L + 2 * M + 30;
+    const X = r => M + (mirror ? (rows - 1 - r) : r) * pitch;
+    const Y = a => M + (a / 360) * circ;
+    let g = '';
+    // tooth rows
+    for (let r = 0; r < rows; r++) { const m = comb.rows[r]; const x = X(r); g += `<line x1="${x}" y1="${M}" x2="${x}" y2="${M + L}" stroke="#999" stroke-width="${m % 12 === 0 ? 0.15 : 0.06}"/>`;
+      if (m % 12 === 0 || r === 0 || r === rows - 1) g += `<text x="${x}" y="${M - 2}" font-size="2" text-anchor="middle" fill="#333">${nn(m)}</text>`; }
+    // angle ticks every 10 degrees, labels every 30
+    for (let a = 0; a <= 360; a += 10) { const y = Y(a); const big = a % 30 === 0; g += `<line x1="${M - (big ? 4 : 2)}" y1="${y}" x2="${M}" y2="${y}" stroke="#333" stroke-width="0.15"/><line x1="${W - M}" y1="${y}" x2="${W - M + (big ? 4 : 2)}" y2="${y}" stroke="#333" stroke-width="0.15"/>`;
+      if (big) g += `<text x="${M - 4.5}" y="${y + 0.7}" font-size="2" text-anchor="end" fill="#333">${a}°</text>`; }
+    // seam lines
+    g += `<line x1="0" y1="${M}" x2="${W}" y2="${M}" stroke="#000" stroke-width="0.25"/><line x1="0" y1="${M + L}" x2="${W}" y2="${M + L}" stroke="#000" stroke-width="0.25" stroke-dasharray="1 1"/>`;
+    g += `<text x="${W / 2}" y="${M - 6}" font-size="2.4" text-anchor="middle" fill="#000">SEAM, tune starts here. Wrap so the dashed line meets this line.</text>`;
+    // pins
+    for (const p of pinRows) { const x = X(p.row), y = Y(p.angle); g += `<circle cx="${x}" cy="${y}" r="0.8" fill="none" stroke="#c00" stroke-width="0.15"/><line x1="${x - 1.4}" y1="${y}" x2="${x + 1.4}" y2="${y}" stroke="#c00" stroke-width="0.12"/><line x1="${x}" y1="${y - 1.4}" x2="${x}" y2="${y + 1.4}" stroke="#c00" stroke-width="0.12"/>`; }
+    // scale bar and legend
+    const by = M + L + 10;
+    g += `<line x1="${M}" y1="${by}" x2="${M + 50}" y2="${by}" stroke="#000" stroke-width="0.4"/><line x1="${M}" y1="${by - 2}" x2="${M}" y2="${by + 2}" stroke="#000" stroke-width="0.3"/><line x1="${M + 50}" y1="${by - 2}" x2="${M + 50}" y2="${by + 2}" stroke="#000" stroke-width="0.3"/><text x="${M + 25}" y="${by + 4.5}" font-size="2.2" text-anchor="middle">50 mm scale check</text>`;
+    g += `<text x="${M}" y="${by + 10}" font-size="2.2" fill="#000">${song.name}, ${cut.start.toFixed(1)} to ${cut.end.toFixed(1)} s, ${comb.label}. Cylinder ${dia} mm dia (${circ.toFixed(2)} mm around), tooth pitch ${pitch} mm, rotation ${rot} s. ${pinRows.length} pins${mirror ? ', mirrored' : ''}.</text>`;
+    g += `<text x="${M}" y="${by + 14}" font-size="2.2" fill="#000">Strip is ${W.toFixed(1)} mm wide by ${L.toFixed(1)} mm long between seam lines. Cut on the outer border, wrap, tape, centre punch each crosshair.</text>`;
+    const pages = L > 250 ? ' Longer than a sheet: print on legal or tape two prints at a 90° tick.' : '';
+    return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}mm" height="${H}mm" viewBox="0 0 ${W} ${H}" font-family="IBM Plex Mono, monospace"><rect x="0.2" y="0.2" width="${W - 0.4}" height="${H - 0.4}" fill="#fff" stroke="#000" stroke-width="0.2"/>${g}</svg>`, note: pages };
+  }
+  $('tplPrint').addEventListener('click', () => {
+    const t = buildTemplate(); $('printArea').innerHTML = t.svg; $('tplMsg').textContent = 'Print at 100% scale.' + t.note;
+    setTimeout(() => window.print(), 50);
+  });
+  $('tplSave').addEventListener('click', async () => {
+    const t = buildTemplate(); const name = csvName().replace(/-pinmap\.csv$/, '-template.svg');
+    if (!hosted) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([t.svg], { type: 'image/svg+xml' })); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); $('tplMsg').textContent = 'Saved.' + t.note; return; }
+    if (!downloads) { $('tplMsg').textContent = 'Saving is not available here. Use the public site.'; return; }
+    try { await downloads.save({ filename: name, data: t.svg }); $('tplMsg').textContent = 'Saved.' + t.note; } catch (e) { if (e && e.code !== 'declined') $('tplMsg').textContent = `Could not save: ${e.message || e.code}`; }
   });
 
   // ---- saved movements: localStorage plus a shareable URL hash; no account, nothing leaves the browser ----
