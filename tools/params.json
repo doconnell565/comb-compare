@@ -1,0 +1,54 @@
+{
+  "_comment": "All dimensions in millimetres. These are PLACEHOLDERS until the movement is measured. Replace and rerun tools/make_step.py.",
+
+  "pin_map_csv": "all-of-the-stars-30tooth-pinmap.csv",
+
+  "cylinder": {
+    "diameter": 13.0,
+    "length": 50.0,
+    "bore_diameter": 3.0,
+    "bore_through": true,
+    "first_row_offset": 2.5,
+    "tooth_pitch": 1.5,
+    "tooth_count": 30,
+    "hole_diameter": 0.58,
+    "hole_depth": 2.0,
+    "hole_chamfer": 0.15,
+    "index_notch_width": 1.0,
+    "index_notch_depth": 0.5,
+    "end_chamfer": 0.3
+  },
+
+  "pin": {
+    "diameter": 0.6,
+    "standoff": 1.2,
+    "length": 3.0
+  },
+
+  "punch": {
+    "body_diameter": 8.0,
+    "length": 55.0,
+    "tip_diameter": 3.0,
+    "tip_length": 6.0,
+    "bore_clearance": 0.04,
+    "shank_flat": true
+  },
+
+  "jig": {
+    "plate_length": 40.0,
+    "plate_width": 15.0,
+    "hole_count": 10,
+    "hole_pitch": 3.0,
+    "hole_clearance": 0.03,
+    "base_thickness": 6.0,
+    "dowel_diameter": 3.0
+  },
+
+  "cradle": {
+    "length": 70.0,
+    "width": 30.0,
+    "height": 22.0,
+    "v_angle_deg": 90.0,
+    "pivot_diameter": 3.0
+  }
+}
